@@ -133,6 +133,7 @@ static void set_sample_period(void)
 /* Commands for resetting the watchdog */
 static void __touch_watchdog(void)
 {
+        /* 将系统时钟(单位为s)watchdog_touch_ts赋给模拟喂狗 */
 	__this_cpu_write(watchdog_touch_ts, get_timestamp());
 }
 
@@ -192,14 +193,15 @@ static int is_hardlockup(void)
 }
 #endif
 
+/* 检测soft lockup */
 static int is_softlockup(unsigned long touch_ts)
 {
 	unsigned long now = get_timestamp();
-
+        /* 如果超时返回超时时间 */
 	/* Warn about unreasonable delays: */
 	if (time_after(now, touch_ts + get_softlockup_thresh()))
 		return now - touch_ts;
-
+        /* 否则返回0说明没有soft lockup */
 	return 0;
 }
 
@@ -264,17 +266,21 @@ static void watchdog_nmi_disable(unsigned int cpu);
 /* watchdog kicker functions */
 static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 {
+        /* 获取上次喂狗时间 */
 	unsigned long touch_ts = __this_cpu_read(watchdog_touch_ts);
 	struct pt_regs *regs = get_irq_regs();
 	int duration;
 
 	/* kick the hardlockup detector */
+        /* 增加hrtimer_interrupts，该值表示当前cpu触发定时器中断次数 */
 	watchdog_interrupt_count();
 
 	/* kick the softlockup detector */
+        /* 尝试唤醒睡眠中的喂狗线程 */
 	wake_up_process(__this_cpu_read(softlockup_watchdog));
 
 	/* .. and repeat */
+        /* 注册下一次定时器到期时间 */
 	hrtimer_forward_now(hrtimer, ns_to_ktime(sample_period));
 
 	if (touch_ts == 0) {
@@ -299,7 +305,9 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 	 * indicate it is getting cpu time.  If it hasn't then
 	 * this is a good indication some task is hogging the cpu
 	 */
+	/* 检测soft lockup */
 	duration = is_softlockup(touch_ts);
+        /* softlock处理 */
 	if (unlikely(duration)) {
 		/*
 		 * If a virtual machine is stopped by the host it can look to
@@ -316,15 +324,19 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 		printk(KERN_EMERG "BUG: soft lockup - CPU#%d stuck for %us! [%s:%d]\n",
 			smp_processor_id(), duration,
 			current->comm, task_pid_nr(current));
+                /* 打印模块信息、中断信息 */
 		print_modules();
 		print_irqtrace_events(current);
+                /* 中断信息 */
 		if (regs)
 			show_regs(regs);
+                /* backtrace信息 */
 		else
 			dump_stack();
-
+                /* 如果CONFIG_BOOTPARAM_SOFTLOCKUP_PANIC_VALUE了直接panic */
 		if (softlockup_panic)
 			panic("softlockup: hung tasks");
+                /* 否则设置soft_watchdog_warn为true */
 		__this_cpu_write(soft_watchdog_warn, true);
 	} else
 		__this_cpu_write(soft_watchdog_warn, false);
@@ -341,26 +353,31 @@ static void watchdog_set_prio(unsigned int policy, unsigned int prio)
 
 static void watchdog_enable(unsigned int cpu)
 {
+        /* 获取本cpu高精度定时器hrtimer */
 	struct hrtimer *hrtimer = &__raw_get_cpu_var(watchdog_hrtimer);
 
 	/* kick off the timer for the hardlockup detector */
+        /* 初始化hrtimer */
 	hrtimer_init(hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+        /* 注册定时器到期回调函数 */
 	hrtimer->function = watchdog_timer_fn;
-
+        /* 判断watchdog是否enbale，如果未开启则暂停thread */
 	if (!watchdog_enabled) {
 		kthread_park(current);
 		return;
 	}
 
 	/* Enable the perf event */
+        /* 如果CONFIG_HARDLOCKUP_DETECTOR则enable nmi看门狗 */
 	watchdog_nmi_enable(cpu);
-
+        /* 启动定时器,到期时间为sample_period，即4s */
 	/* done here because hrtimer_start can only pin to smp_processor_id() */
 	hrtimer_start(hrtimer, ns_to_ktime(sample_period),
 		      HRTIMER_MODE_REL_PINNED);
-
+        /* 设置watchdog为SCHED_FIFO，优先级99 */
 	/* initialize timestamp */
 	watchdog_set_prio(SCHED_FIFO, MAX_RT_PRIO - 1);
+        /* 执行首次喂狗动作 */
 	__touch_watchdog();
 }
 
@@ -390,8 +407,10 @@ static int watchdog_should_run(unsigned int cpu)
  */
 static void watchdog(unsigned int cpu)
 {
+        /* 将hrtimer_interrupts值赋给soft_lockup_hrtimer_cnt */
 	__this_cpu_write(soft_lockup_hrtimer_cnt,
 			 __this_cpu_read(hrtimer_interrupts));
+        /* 喂狗 */
 	__touch_watchdog();
 }
 
@@ -532,18 +551,28 @@ int proc_dowatchdog(struct ctl_table *table, int write,
 #endif /* CONFIG_SYSCTL */
 
 static struct smp_hotplug_thread watchdog_threads = {
+        /* task_struct指针 */
 	.store			= &softlockup_watchdog,
-	.thread_should_run	= watchdog_should_run,
+	/* 检查线程是否应该运行 */
+
+	.thread_should_run	= watchdog_should_run,  
+        /* 关联的线程函数 */
 	.thread_fn		= watchdog,
+	/* 任务名 */
 	.thread_comm		= "watchdog/%u",
+	/* 线程第一次运行时调用 */
 	.setup			= watchdog_enable,
+	/* 当线程被挂起(cpu offline)时调用 */
 	.park			= watchdog_disable,
+	/* 线程恢复运行(cpu online)时调用 */
 	.unpark			= watchdog_enable,
 };
 
 void __init lockup_detector_init(void)
 {
+        /* 设置喂狗周期 */
 	set_sample_period();
+        /* 为每个cpu创建watchdog_threads线程 */
 	if (smpboot_register_percpu_thread(&watchdog_threads)) {
 		pr_err("Failed to create watchdog threads, disabled\n");
 		watchdog_disabled = -ENODEV;

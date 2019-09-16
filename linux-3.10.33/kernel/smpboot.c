@@ -109,6 +109,7 @@ static int smpboot_thread_fn(void *data)
 	while (1) {
 		set_current_state(TASK_INTERRUPTIBLE);
 		preempt_disable();
+                /* 是否需要停止本任务 */
 		if (kthread_should_stop()) {
 			set_current_state(TASK_RUNNING);
 			preempt_enable();
@@ -117,7 +118,7 @@ static int smpboot_thread_fn(void *data)
 			kfree(td);
 			return 0;
 		}
-
+                /* 是否需要park */
 		if (kthread_should_park()) {
 			__set_current_state(TASK_RUNNING);
 			preempt_enable();
@@ -135,6 +136,7 @@ static int smpboot_thread_fn(void *data)
 
 		/* Check for state change setup */
 		switch (td->status) {
+                /* 当前为首次运行 */
 		case HP_THREAD_NONE:
 			preempt_enable();
 			if (ht->setup)
@@ -142,6 +144,7 @@ static int smpboot_thread_fn(void *data)
 			td->status = HP_THREAD_ACTIVE;
 			preempt_disable();
 			break;
+                /* 当前已经处于park状态 */
 		case HP_THREAD_PARKED:
 			preempt_enable();
 			if (ht->unpark)
@@ -150,7 +153,7 @@ static int smpboot_thread_fn(void *data)
 			preempt_disable();
 			break;
 		}
-
+                /* 处于正常运行状态 */
 		if (!ht->thread_should_run(td->cpu)) {
 			preempt_enable();
 			schedule();
@@ -176,7 +179,7 @@ __smpboot_create_thread(struct smp_hotplug_thread *ht, unsigned int cpu)
 		return -ENOMEM;
 	td->cpu = cpu;
 	td->ht = ht;
-
+        /* 创建线程，处理函数为smpboot_thread_fn */
 	tsk = kthread_create_on_cpu(smpboot_thread_fn, td, cpu,
 				    ht->thread_comm);
 	if (IS_ERR(tsk)) {
@@ -280,6 +283,7 @@ int smpboot_register_percpu_thread(struct smp_hotplug_thread *plug_thread)
 	int ret = 0;
 
 	mutex_lock(&smpboot_threads_lock);
+        /* 遍历online cpu为其创建plug_thread */
 	for_each_online_cpu(cpu) {
 		ret = __smpboot_create_thread(plug_thread, cpu);
 		if (ret) {
@@ -288,6 +292,7 @@ int smpboot_register_percpu_thread(struct smp_hotplug_thread *plug_thread)
 		}
 		smpboot_unpark_thread(plug_thread, cpu);
 	}
+        /* 将plug_thread链表加入hotplug_threads */
 	list_add(&plug_thread->list, &hotplug_threads);
 out:
 	mutex_unlock(&smpboot_threads_lock);
