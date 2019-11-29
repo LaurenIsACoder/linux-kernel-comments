@@ -133,7 +133,7 @@ static void set_sample_period(void)
 /* Commands for resetting the watchdog */
 static void __touch_watchdog(void)
 {
-        /* 将系统时钟(单位为s)watchdog_touch_ts赋给模拟喂狗 */
+        /* 将系统时钟(单位为s)赋给watchdog_touch_ts模拟喂狗 */
 	__this_cpu_write(watchdog_touch_ts, get_timestamp());
 }
 

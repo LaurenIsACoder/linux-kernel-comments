@@ -965,16 +965,20 @@ static const u32 prio_to_wmult[40] = {
 
 #define DEQUEUE_SLEEP		1
 
+/* 调度类 */
 struct sched_class {
+        /* 指向下一个调度类, 比该类低一个优先级 */
 	const struct sched_class *next;
 
+        /* 入队：向该调度类的runqueue添加一个进程 */
 	void (*enqueue_task) (struct rq *rq, struct task_struct *p, int flags);
+        /* 出队 */
 	void (*dequeue_task) (struct rq *rq, struct task_struct *p, int flags);
 	void (*yield_task) (struct rq *rq);
 	bool (*yield_to_task) (struct rq *rq, struct task_struct *p, bool preempt);
 
 	void (*check_preempt_curr) (struct rq *rq, struct task_struct *p, int flags);
-
+        /* 从runqueue中选择一个最适合运行的task */
 	struct task_struct * (*pick_next_task) (struct rq *rq);
 	void (*put_prev_task) (struct rq *rq, struct task_struct *p);
 

@@ -50,7 +50,7 @@ static void __init reset_early_page_tables(void)
 }
 /* 
  * CR2: 用于在发生page fault时，保存引起page fault的线性地址
- * CR3: 用于保存页目录表页面的物理地址，因此被称为PDBR
+ * CR3: 用于保存页目录表页面的物理地址
  */
 /* Create a new PMD entry */
 int __init early_make_pgtable(unsigned long address)
@@ -66,6 +66,7 @@ int __init early_make_pgtable(unsigned long address)
 		return -1;
 
 again:
+	/* 从pgd目录中取得pgd */
 	pgd_p = &early_level4_pgt[pgd_index(address)].pgd;
 	pgd = *pgd_p;
 

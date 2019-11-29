@@ -69,7 +69,18 @@ startup_64:
 	 * Compute the delta between the address I am compiled to run at and the
 	 * address I am actually running at.
 	 */
+
+	/*
+	 * 计算要运行的地址与实际运行地址间的差
+	 * 0说明kernel加载到默认地址，没有启用kASLR
+	 */
+
+	/* rbp = 0x1000000 */	
 	leaq	_text(%rip), %rbp
+	/* 
+	 * rbp = rbp - (_text - __START_KERNEL_map) 
+	 *     = 0x1000000 - (0xffffffff81000000 - 0xffffffff80000000) 
+	 */
 	subq	$_text - __START_KERNEL_map, %rbp
 
 	/* Is the address not 2M aligned? */
@@ -88,6 +99,7 @@ startup_64:
 	/*
 	 * Fixup the physical addresses in the page table
 	 */
+	/* 如果rbp不为默认的0x1000000,需要修正页表地址*/
 	addq	%rbp, early_level4_pgt + (L4_START_KERNEL*8)(%rip)
 
 	addq	%rbp, level3_kernel_pgt + (510*8)(%rip)
